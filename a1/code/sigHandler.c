@@ -11,7 +11,7 @@ void floating_point_exception_handler(int signum) {
 
 	printf("I am slain!\n");
 	/* Do your tricks here */
-	//gdb see stack, find address of where program counter was stored
+	//used gdb to see the stack, find address of where program counter was stored
 	//move pointer and increment program counter
 	void* ptr = &signum;
 	ptr = ptr+0xcc;
