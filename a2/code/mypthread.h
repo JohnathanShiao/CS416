@@ -1,7 +1,7 @@
 // File:	mypthread_t.h
 
-// List all group member's name:
-// username of iLab:
+// List all group member's name: Dustin Shiao, Henry Chu
+// username of iLab: pascal
 // iLab Server:
 
 #ifndef MYTHREAD_T_H
@@ -44,6 +44,9 @@ typedef struct threadControlBlock {
 typedef struct mypthread_mutex_t {
 	/* add something here */
 
+	int locked;
+	mypthread_t t_id;
+
 	// YOUR CODE HERE
 } mypthread_mutex_t;
 
@@ -52,6 +55,20 @@ typedef struct mypthread_mutex_t {
 
 // YOUR CODE HERE
 
+typedef struct ready_queue {
+	tcb* threadControlBlock;
+	struct ready_queue* next;
+} ready_queue;
+
+typedef struct run_queue {
+	tcb* threadControlBlock;
+	struct run_queue* next;
+} run_queue;
+
+typedef struct blocked_queue {
+	tcb* threadControlBlock;
+	struct blocked_queue* next;
+} blocked_queue;
 
 /* Function Declarations: */
 

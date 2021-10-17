@@ -9,124 +9,146 @@
 #include <signal.h>
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
-tcb* currentThread=NULL;
-tcb* schedulerContext=NULL;
+tcb* currentThread = NULL;
+tcb* schedulerContext = NULL;
 void runner(void*(*function)(void*), void* arg);
 
 int t_idcounter = 0;
 
 void* myMalloc(int size)
 {
-	void* temp = calloc(1,size);
-	if(temp==NULL)
+	void* temp = calloc(1, size);
+
+	if (temp == NULL)
 	{
 		printf("Fatal Error, malloc has returned null");
 		exit(1);
 	}
+
 	return temp;
 }
 
 /* create a new thread */
-int mypthread_create(mypthread_t * thread, pthread_attr_t * attr,
-                      void *(*function)(void*), void * arg) {
-       	// create Thread Control Block
-       	// create and initialize the context of this thread
-       	// allocate space of stack for this thread to run
-       	// after everything is all set, push this thread int
-       	// YOUR CODE HERE
-		//TCB
-		tcb* newThread = myMalloc(sizeof(tcb));
-		newThread->t_id = t_idcounter++;
-		newThread->status = 0;
-		//Thread Context
-		ucontext_t current;
-		if(getcontext(&current)==-1)
-		{
-			printf("Error, getcontext had an error\n");
-			exit(1);
-		}
-		void* stack = myMalloc(SIGSTKSZ);
-		current.uc_link=NULL;
-		current.uc_stack.ss_sp=stack;
-		current.uc_stack.ss_size=SIGSTKSZ;
-		current.uc_stack.ss_flags=0;
-		makecontext(&current,&runner,2,function,arg);
-		newThread->context = current;
-		//Runqueue
+int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg)
+{
+	// create Thread Control Block
+	// create and initialize the context of this thread
+	// allocate space of stack for this thread to run
+	// after everything is all set, push this thread int
+	// YOUR CODE HERE
 
-    return 0;
+	//TCB
+	tcb* newThread = myMalloc(sizeof(tcb));
+	newThread->t_id = t_idcounter++;
+	newThread->status = 0;
+	//Thread Context
+	ucontext_t current;
+
+	if (getcontext(&current) == -1)
+	{
+		printf("Error, getcontext had an error\n");
+		exit(1);
+	}
+
+	void* stack = myMalloc(SIGSTKSZ);
+	current.uc_link = NULL;
+	current.uc_stack.ss_sp = stack;
+	current.uc_stack.ss_size = SIGSTKSZ;
+	current.uc_stack.ss_flags = 0;
+	makecontext(&current, &runner, 2, function, arg);
+	newThread->context = current;
+	//Runqueue
+
+    return newThread->t_id;
 };
 
 /* give CPU possession to other user-level threads voluntarily */
-int mypthread_yield() {
-
+int mypthread_yield()
+{
 	// change thread state from Running to Ready
 	// save context of this thread to its thread control block
 	// wwitch from thread context to scheduler context
 
 	// YOUR CODE HERE
-	swapcontext(&(currentThread->context),&schedulerContext);
-	return 0;
+	return swapcontext(&(currentThread->context), &schedulerContext);
 };
 
 /* terminate a thread */
-void mypthread_exit(void *value_ptr) {
+void mypthread_exit(void *value_ptr)
+{
 	// Deallocated any dynamic memory created when starting this thread
 
 	// YOUR CODE HERE
+	// pthread_exit(value_ptr);
 };
 
 
 /* Wait for thread termination */
-int mypthread_join(mypthread_t thread, void **value_ptr) {
-
+int mypthread_join(mypthread_t thread, void **value_ptr)
+{
 	// wait for a specific thread to terminate
 	// de-allocate any dynamic memory created by the joining thread
 
 	// YOUR CODE HERE
+	// return join(thread, value_ptr);
 	return 0;
 };
 
 /* initialize the mutex lock */
-int mypthread_mutex_init(mypthread_mutex_t *mutex,
-                          const pthread_mutexattr_t *mutexattr) {
+int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr)
+{
 	//initialize data structures for this mutex
 
 	// YOUR CODE HERE
+	mutex = myMalloc(sizeof(mypthread_mutex_t));
+	mutex->locked = 0;
+	mutex->t_id = -1;
+
 	return 0;
 };
 
 /* aquire the mutex lock */
-int mypthread_mutex_lock(mypthread_mutex_t *mutex) {
-        // use the built-in test-and-set atomic function to test the mutex
-        // if the mutex is acquired successfully, enter the critical section
-        // if acquiring mutex fails, push current thread into block list and //
-        // context switch to the scheduler thread
+int mypthread_mutex_lock(mypthread_mutex_t *mutex)
+{
+	// use the built-in test-and-set atomic function to test the mutex
+	// if the mutex is acquired successfully, enter the critical section
+	// if acquiring mutex fails, push current thread into block list and //
+	// context switch to the scheduler thread
 
-        // YOUR CODE HERE
-        return 0;
+	// YOUR CODE HERE
+	mutex->locked = 1;
+	mutex->t_id = currentThread->t_id;
+
+	return 0;
 };
 
 /* release the mutex lock */
-int mypthread_mutex_unlock(mypthread_mutex_t *mutex) {
+int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
+{
 	// Release mutex and make it available again.
 	// Put threads in block list to run queue
 	// so that they could compete for mutex later.
 
 	// YOUR CODE HERE
+	mutex->locked = 0;
+	mutex->t_id = -1;
+
 	return 0;
 };
 
 
 /* destroy the mutex */
-int mypthread_mutex_destroy(mypthread_mutex_t *mutex) {
+int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
+{
 	// Deallocate dynamic memory created in mypthread_mutex_init
+	free(mutex);
 
 	return 0;
 };
 
 /* scheduler */
-static void schedule() {
+static void schedule()
+{
 	// Every time when timer interrup happens, your thread library
 	// should be contexted switched from thread context to this
 	// schedule function
@@ -135,7 +157,7 @@ static void schedule() {
 	// according to policy (STCF or MLFQ)
 
 	// if (sched == STCF)
-	//		sched_stcf();
+	// 		sched_stcf();
 	// else if (sched == MLFQ)
 	// 		sched_mlfq();
 
@@ -151,7 +173,8 @@ static void schedule() {
 }
 
 /* Preemptive SJF (STCF) scheduling algorithm */
-static void sched_stcf() {
+static void sched_stcf()
+{
 	// Your own implementation of STCF
 	// (feel free to modify arguments and return types)
 
@@ -159,7 +182,8 @@ static void sched_stcf() {
 }
 
 /* Preemptive MLFQ scheduling algorithm */
-static void sched_mlfq() {
+static void sched_mlfq()
+{
 	// Your own implementation of MLFQ
 	// (feel free to modify arguments and return types)
 
@@ -169,6 +193,7 @@ static void sched_mlfq() {
 // Feel free to add any other functions you need
 
 // YOUR CODE HERE
-void runner(void*(*function)(void*), void* arg){
+void runner(void*(*function)(void*), void* arg)
+{
 	function(arg);
 }
