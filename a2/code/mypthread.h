@@ -55,11 +55,6 @@ typedef struct mypthread_mutex_t {
 
 // YOUR CODE HERE
 
-typedef struct ready_queue {
-	tcb* threadControlBlock;
-	struct ready_queue* next;
-} ready_queue;
-
 typedef struct run_queue {
 	tcb* threadControlBlock;
 	struct run_queue* next;
@@ -69,6 +64,11 @@ typedef struct blocked_queue {
 	tcb* threadControlBlock;
 	struct blocked_queue* next;
 } blocked_queue;
+
+typedef struct finished_queue {
+	tcb* threadControlBlock;
+	struct finished_queue* next;
+} finished_queue;
 
 /* Function Declarations: */
 

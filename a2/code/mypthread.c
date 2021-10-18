@@ -13,9 +13,9 @@ tcb* currentThread = NULL;
 tcb* schedulerContext = NULL;
 void runner(void*(*function)(void*), void* arg);
 
-ready_queue* readyQueue = NULL;
-run_queue* runQueue = NULL;
-blocked_queue* blockedQueue = NULL;
+run_queue* runQueueHead = NULL;
+blocked_queue* blockedQueueHead = NULL;
+finished_queue* finishedQueueHead = NULL;
 
 int t_idcounter = 0;
 
@@ -32,14 +32,35 @@ void* myMalloc(int size)
 	return temp;
 }
 
+void initLL()
+{
+	runQueueHead = myMalloc(sizeof(run_queue));
+	runQueueHead->threadControlBlock = NULL;
+	runQueueHead->next = NULL;
+
+	blockedQueueHead = myMalloc(sizeof(blocked_queue));
+	blockedQueueHead->threadControlBlock = NULL;
+	blockedQueueHead->next = NULL;
+
+	finishedQueueHead = myMalloc(sizeof(finished_queue));
+	finishedQueueHead->threadControlBlock = NULL;
+	finishedQueueHead->next = NULL;
+}
+
 /* create a new thread */
 int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg)
 {
+	
 	// create Thread Control Block
 	// create and initialize the context of this thread
 	// allocate space of stack for this thread to run
 	// after everything is all set, push this thread int
 	// YOUR CODE HERE
+
+	if (runQueueHead == NULL && blockedQueueHead == NULL && finishedQueueHead == NULL)
+	{
+		initLL();
+	}
 
 	//TCB
 	tcb* newThread = myMalloc(sizeof(tcb));
@@ -63,20 +84,15 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	newThread->context = current;
 	//Runqueue
 
-	if (readyQueue == NULL) {
-		readyQueue = myMalloc(sizeof(ready_queue));
-		readyQueue->threadControlBlock = newThread;
-		readyQueue->next = NULL;
-	} else {
-		ready_queue* crnt = readyQueue;
+	run_queue* crnt = runQueueHead;
 
-		while (crnt->next != NULL) {
-			crnt = crnt->next;
-		}
-
-		crnt->threadControlBlock = newThread;
-		crnt->next = NULL;
+	while (crnt->next != NULL)
+	{
+		crnt = crnt->next;
 	}
+
+	crnt->threadControlBlock = newThread;
+	crnt->next = NULL;
 
     return newThread->t_id;
 };
@@ -136,9 +152,28 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 	// context switch to the scheduler thread
 
 	// YOUR CODE HERE
+	if (mutex->locked == 1)
+	{
+		blocked_queue* newBlockedNode = myMalloc(sizeof(blocked_queue));
+		newBlockedNode->threadControlBlock = currentThread;
+		newBlockedNode->threadControlBlock->status = 2;
+		newBlockedNode->next = NULL;
+
+		blocked_queue* crnt = blockedQueueHead;
+
+		while (crnt->next != NULL)
+		{
+			crnt = crnt->next;
+		}
+
+		crnt->next = newBlockedNode;
+
+		currentThread = NULL;
+	}
+
 	mutex->locked = 1;
 	mutex->t_id = currentThread->t_id;
-
+	
 	return 0;
 };
 
@@ -150,8 +185,30 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 	// so that they could compete for mutex later.
 
 	// YOUR CODE HERE
-	mutex->locked = 0;
-	mutex->t_id = -1;
+	
+	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id && blockedQueueHead != NULL && blockedQueueHead->threadControlBlock != NULL)
+	{
+		tcb* newRunThread = blockedQueueHead->threadControlBlock;
+		run_queue* crnt = runQueueHead;
+		
+		while (crnt->next != NULL)
+		{
+			crnt = crnt->next;
+		}
+
+		run_queue* newRunNode = myMalloc(sizeof(run_queue));
+		newRunNode->threadControlBlock = newRunThread;
+		newRunNode->threadControlBlock->status = 1;
+		newRunNode->next = NULL;
+
+		crnt->next = newRunNode;
+
+		blocked_queue* oldBlockedNode = blockedQueueHead;
+		blockedQueueHead = blockedQueueHead->next;
+
+		free(oldBlockedNode);
+	}
+	
 
 	return 0;
 };
@@ -183,12 +240,12 @@ static void schedule()
 
 	// YOUR CODE HERE
 
-// schedule policy
-#ifndef MLFQ
-	// Choose STCF
-#else
-	// Choose MLFQ
-#endif
+	// schedule policy
+	#ifndef MLFQ
+		sched_stcf();
+	#else
+		sched_mlfq();
+	#endif
 
 }
 
