@@ -12,7 +12,9 @@
  */
 int main(int argc, char **argv) {
 
-	/* Implement HERE */
+	pthread_mutex_t mutex;
+	pthread_mutex_init(&mutex, NULL);
+	pthread_mutex_destroy(&mutex);
 
 	return 0;
 }

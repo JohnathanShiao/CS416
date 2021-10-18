@@ -13,6 +13,10 @@ tcb* currentThread = NULL;
 tcb* schedulerContext = NULL;
 void runner(void*(*function)(void*), void* arg);
 
+ready_queue* readyQueue = NULL;
+run_queue* runQueue = NULL;
+blocked_queue* blockedQueue = NULL;
+
 int t_idcounter = 0;
 
 void* myMalloc(int size)
@@ -55,9 +59,24 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	current.uc_stack.ss_sp = stack;
 	current.uc_stack.ss_size = SIGSTKSZ;
 	current.uc_stack.ss_flags = 0;
-	makecontext(&current, &runner, 2, function, arg);
+	makecontext(&current, (void*)&runner, 2, function, arg);
 	newThread->context = current;
 	//Runqueue
+
+	if (readyQueue == NULL) {
+		readyQueue = myMalloc(sizeof(ready_queue));
+		readyQueue->threadControlBlock = newThread;
+		readyQueue->next = NULL;
+	} else {
+		ready_queue* crnt = readyQueue;
+
+		while (crnt->next != NULL) {
+			crnt = crnt->next;
+		}
+
+		crnt->threadControlBlock = newThread;
+		crnt->next = NULL;
+	}
 
     return newThread->t_id;
 };
@@ -70,7 +89,8 @@ int mypthread_yield()
 	// wwitch from thread context to scheduler context
 
 	// YOUR CODE HERE
-	return swapcontext(&(currentThread->context), &schedulerContext);
+	swapcontext(&(currentThread->context), &schedulerContext);
+	return 0;
 };
 
 /* terminate a thread */
@@ -141,7 +161,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
 {
 	// Deallocate dynamic memory created in mypthread_mutex_init
-	free(mutex);
+	// free(mutex);
 
 	return 0;
 };
