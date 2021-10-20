@@ -35,21 +35,6 @@ void* myMalloc(int size)
 	return temp;
 }
 
-void initLL()
-{
-	runQueueHead = myMalloc(sizeof(run_queue));
-	runQueueHead->threadControlBlock = NULL;
-	runQueueHead->next = NULL;
-
-	blockedQueueHead = myMalloc(sizeof(blocked_queue));
-	blockedQueueHead->threadControlBlock = NULL;
-	blockedQueueHead->next = NULL;
-
-	finishedQueueHead = myMalloc(sizeof(finished_queue));
-	finishedQueueHead->threadControlBlock = NULL;
-	finishedQueueHead->next = NULL;
-}
-
 /* create a new thread */
 int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg)
 {
@@ -59,11 +44,6 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	// allocate space of stack for this thread to run
 	// after everything is all set, push this thread int
 	// YOUR CODE HERE
-
-	if (runQueueHead == NULL && blockedQueueHead == NULL && finishedQueueHead == NULL)
-	{
-		initLL();
-	}
 
 	//TCB
 	tcb* newThread = myMalloc(sizeof(tcb));
@@ -87,15 +67,26 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	newThread->context = current;
 	//Runqueue
 
-	run_queue* crnt = runQueueHead;
+	run_queue* newRunNode = myMalloc(sizeof(run_queue));
+	newRunNode->threadControlBlock = newThread;
+	newRunNode->next = NULL;
 
-	while (crnt->next != NULL)
+	if (runQueueHead == NULL)
 	{
-		crnt = crnt->next;
+		runQueueHead = newRunNode;
 	}
+	else
+	{
+		run_queue* crnt = runQueueHead;
 
-	crnt->threadControlBlock = newThread;
-	crnt->next = NULL;
+		while (crnt->next != NULL)
+		{
+			crnt = crnt->next;
+		}
+
+		crnt->next = newRunNode;
+	}
+	
 
     return newThread->t_id;
 };
@@ -206,14 +197,21 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		newBlockedNode->threadControlBlock->status = 2;
 		newBlockedNode->next = NULL;
 
-		blocked_queue* crnt = blockedQueueHead;
-
-		while (crnt->next != NULL)
+		if (blockedQueueHead == NULL)
 		{
-			crnt = crnt->next;
+			blockedQueueHead = newBlockedNode;
 		}
+		else
+		{
+			blocked_queue* crnt = blockedQueueHead;
 
-		crnt->next = newBlockedNode;
+			while (crnt->next != NULL)
+			{
+				crnt = crnt->next;
+			}
+
+			crnt->next = newBlockedNode;
+		}
 
 		currentThread = NULL;
 	}
@@ -233,29 +231,38 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 
 	// YOUR CODE HERE
 	
-	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id && blockedQueueHead != NULL && blockedQueueHead->threadControlBlock != NULL)
+	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id && blockedQueueHead != NULL)
 	{
 		tcb* newRunThread = blockedQueueHead->threadControlBlock;
-		run_queue* crnt = runQueueHead;
-		
-		while (crnt->next != NULL)
-		{
-			crnt = crnt->next;
-		}
 
 		run_queue* newRunNode = myMalloc(sizeof(run_queue));
 		newRunNode->threadControlBlock = newRunThread;
 		newRunNode->threadControlBlock->status = 1;
 		newRunNode->next = NULL;
 
-		crnt->next = newRunNode;
+		if (runQueueHead == NULL)
+		{
+			runQueueHead = myMalloc(sizeof(run_queue));
+			runQueueHead->threadControlBlock = newRunThread;
+			runQueueHead->next = NULL;
+		}
+		else
+		{
+			run_queue* crnt = runQueueHead;
+			
+			while (crnt->next != NULL)
+			{
+				crnt = crnt->next;
+			}
+
+			crnt->next = newRunNode;
+		}
 
 		blocked_queue* oldBlockedNode = blockedQueueHead;
 		blockedQueueHead = blockedQueueHead->next;
 
 		free(oldBlockedNode);
 	}
-	
 
 	return 0;
 };
