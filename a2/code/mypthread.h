@@ -67,6 +67,7 @@ typedef struct blocked_queue {
 
 typedef struct finished_queue {
 	tcb* threadControlBlock;
+	void* value;
 	struct finished_queue* next;
 } finished_queue;
 

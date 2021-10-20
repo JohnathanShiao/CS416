@@ -17,6 +17,9 @@ run_queue* runQueueHead = NULL;
 blocked_queue* blockedQueueHead = NULL;
 finished_queue* finishedQueueHead = NULL;
 
+//how to tell if current thread is done
+int done = 0;
+
 int t_idcounter = 0;
 
 void* myMalloc(int size)
@@ -115,8 +118,23 @@ void mypthread_exit(void *value_ptr)
 	// Deallocated any dynamic memory created when starting this thread
 
 	// YOUR CODE HERE
-	// pthread_exit(value_ptr);
-};
+	//put thread on finished stack
+	finished_queue* finishedThread = myMalloc(sizeof(finished_queue));
+	finishedThread->threadControlBlock->t_id = currentThread->t_id;
+	finishedThread->value = value_ptr;
+	if(finishedQueueHead == NULL)
+	{
+		finishedThread->next = NULL;
+	}
+	else{
+		finishedThread->next=finishedQueueHead;
+	}
+	//set stack head to latest finished thread
+	finishedQueueHead=finishedThread;
+	done = 1;
+	//go back to scheduler
+	setcontext(&schedulerContext);
+}
 
 
 /* Wait for thread termination */
@@ -126,7 +144,36 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
 	// de-allocate any dynamic memory created by the joining thread
 
 	// YOUR CODE HERE
-	// return join(thread, value_ptr);
+	while(1)
+	{
+		finished_queue* prev = NULL;
+		finished_queue* curr = finishedQueueHead;
+		//iterate through finished threads
+		while(curr!=NULL)
+		{
+			//found the thread to join
+			if(curr->threadControlBlock->t_id == thread)
+			{
+				if(curr->value != NULL)
+				{
+					value_ptr = &(curr->value);
+				}
+				//we are at the head
+				if(prev == NULL)
+				{
+					finishedQueueHead = curr->next;
+				}
+				else{
+					prev->next = curr->next;
+				}
+				free(curr);
+				return 0;
+			}
+			prev = curr;
+			curr = curr->next;
+		}
+		swapcontext(&(currentThread->context), &schedulerContext);
+	}
 	return 0;
 };
 
