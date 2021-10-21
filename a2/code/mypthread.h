@@ -19,6 +19,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ucontext.h>
+#include <signal.h>
+#include <sys/time.h>
+#include <string.h>
 
 typedef uint mypthread_t;
 
@@ -38,6 +41,8 @@ typedef struct threadControlBlock {
 	//2 = blocked
 	int status;
 	ucontext_t context;
+
+	int time;
 } tcb;
 
 /* mutex struct definition */
@@ -66,7 +71,7 @@ typedef struct blocked_queue {
 } blocked_queue;
 
 typedef struct finished_queue {
-	tcb* threadControlBlock;
+	mypthread_t t_id;
 	void* value;
 	struct finished_queue* next;
 } finished_queue;
@@ -98,6 +103,18 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex);
 
 /* destroy the mutex */
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex);
+
+void* myMalloc(int size);
+
+static void sched_stcf();
+
+void signalHandler(int signum);
+
+void enqueueSTCF(tcb* threadBlock);
+
+tcb* dequeueSTCF();
+
+static void schedule();
 
 #ifdef USE_MYTHREAD
 #define pthread_t mypthread_t

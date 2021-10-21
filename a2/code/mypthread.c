@@ -5,35 +5,25 @@
 // iLab Server: 
 
 #include "mypthread.h"
-#include <ucontext.h>
-#include <signal.h>
+
 // INITAILIZE ALL YOUR VARIABLES HERE
 // YOUR CODE HERE
 tcb* currentThread = NULL;
-tcb* schedulerContext = NULL;
+tcb* mainThread = NULL;
+ucontext_t schedulerContext, mainContext;
 void runner(void*(*function)(void*), void* arg);
 
 run_queue* runQueueHead = NULL;
 blocked_queue* blockedQueueHead = NULL;
 finished_queue* finishedQueueHead = NULL;
 
+struct itimerval timer;
+struct itimerval timerOff;
+
 //how to tell if current thread is done
 int done = 0;
 
 int t_idcounter = 0;
-
-void* myMalloc(int size)
-{
-	void* temp = calloc(1, size);
-
-	if (temp == NULL)
-	{
-		printf("Fatal Error, malloc has returned null");
-		exit(1);
-	}
-
-	return temp;
-}
 
 /* create a new thread */
 int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg)
@@ -45,10 +35,54 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	// after everything is all set, push this thread int
 	// YOUR CODE HERE
 
+	if (runQueueHead == NULL && blockedQueueHead == NULL && finishedQueueHead == NULL)
+	{
+		mainThread = myMalloc(sizeof(tcb));
+		mainThread->t_id = t_idcounter++;
+		mainThread->status = 0;
+		mainThread->time = 0;
+
+		getcontext(&mainContext);
+
+		mainThread->context = mainContext;
+		
+		#ifndef MLFQ
+			enqueueSTCF(mainThread);
+			dequeueSTCF();
+		#else
+			schedmlfq();
+		#endif
+
+		getcontext(&schedulerContext);
+		void* scheduleStack = myMalloc(SIGSTKSZ);
+		schedulerContext.uc_link = NULL;
+		schedulerContext.uc_stack.ss_sp = scheduleStack;
+		schedulerContext.uc_stack.ss_size = SIGSTKSZ;
+		schedulerContext.uc_stack.ss_flags = 0;
+		makecontext(&schedulerContext, (void*)&schedule, 0);
+
+		timer.it_interval.tv_usec = 0;
+		timer.it_interval.tv_sec = 0;
+		timer.it_value.tv_usec = 10;
+		timer.it_value.tv_sec = 0;
+
+		timerOff.it_interval.tv_usec = 0; 
+		timerOff.it_interval.tv_sec = 0;
+		timerOff.it_value.tv_usec = 0;
+		timerOff.it_value.tv_sec = 0;
+
+		struct sigaction signal;
+		memset(&signal,0,sizeof(signal));
+		signal.sa_handler = &signalHandler;
+		sigaction(SIGPROF, &signal, NULL);
+		currentThread = mainThread;
+	}
+
 	//TCB
 	tcb* newThread = myMalloc(sizeof(tcb));
 	newThread->t_id = t_idcounter++;
 	newThread->status = 0;
+	newThread->time = 0;
 	//Thread Context
 	ucontext_t current;
 
@@ -67,27 +101,12 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	newThread->context = current;
 	//Runqueue
 
-	run_queue* newRunNode = myMalloc(sizeof(run_queue));
-	newRunNode->threadControlBlock = newThread;
-	newRunNode->next = NULL;
-
-	if (runQueueHead == NULL)
-	{
-		runQueueHead = newRunNode;
-	}
-	else
-	{
-		run_queue* crnt = runQueueHead;
-
-		while (crnt->next != NULL)
-		{
-			crnt = crnt->next;
-		}
-
-		crnt->next = newRunNode;
-	}
-	
-
+	#ifndef MLFQ
+		enqueueSTCF(newThread);
+	#else
+		sched_mlfq();
+	#endif
+	setitimer(ITIMER_PROF,&timer,NULL);
     return newThread->t_id;
 };
 
@@ -99,6 +118,7 @@ int mypthread_yield()
 	// wwitch from thread context to scheduler context
 
 	// YOUR CODE HERE
+	setitimer(ITIMER_PROF, &timerOff, NULL);
 	swapcontext(&(currentThread->context), &schedulerContext);
 	return 0;
 };
@@ -109,9 +129,10 @@ void mypthread_exit(void *value_ptr)
 	// Deallocated any dynamic memory created when starting this thread
 
 	// YOUR CODE HERE
+	setitimer(ITIMER_PROF,&timerOff,NULL);
 	//put thread on finished stack
 	finished_queue* finishedThread = myMalloc(sizeof(finished_queue));
-	finishedThread->threadControlBlock->t_id = currentThread->t_id;
+	finishedThread->t_id = currentThread->t_id;
 	finishedThread->value = value_ptr;
 	if(finishedQueueHead == NULL)
 	{
@@ -137,13 +158,14 @@ int mypthread_join(mypthread_t thread, void **value_ptr)
 	// YOUR CODE HERE
 	while(1)
 	{
+		setitimer(ITIMER_PROF,&timerOff,NULL);
 		finished_queue* prev = NULL;
 		finished_queue* curr = finishedQueueHead;
 		//iterate through finished threads
 		while(curr!=NULL)
 		{
 			//found the thread to join
-			if(curr->threadControlBlock->t_id == thread)
+			if(curr->t_id == thread)
 			{
 				if(curr->value != NULL)
 				{
@@ -192,10 +214,13 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 	// YOUR CODE HERE
 	if (mutex->locked == 1)
 	{
+		setitimer(ITIMER_PROF, &timerOff, NULL);
+
 		blocked_queue* newBlockedNode = myMalloc(sizeof(blocked_queue));
 		newBlockedNode->threadControlBlock = currentThread;
 		newBlockedNode->threadControlBlock->status = 2;
 		newBlockedNode->next = NULL;
+		swapcontext(&(newBlockedNode->threadControlBlock->context), &schedulerContext);
 
 		if (blockedQueueHead == NULL)
 		{
@@ -231,37 +256,42 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 
 	// YOUR CODE HERE
 	
-	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id && blockedQueueHead != NULL)
+	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id)
 	{
-		tcb* newRunThread = blockedQueueHead->threadControlBlock;
+		blocked_queue* crnt = blockedQueueHead;
+		blocked_queue* prev = NULL;
 
-		run_queue* newRunNode = myMalloc(sizeof(run_queue));
-		newRunNode->threadControlBlock = newRunThread;
-		newRunNode->threadControlBlock->status = 1;
-		newRunNode->next = NULL;
-
-		if (runQueueHead == NULL)
+		while (crnt != NULL)
 		{
-			runQueueHead = myMalloc(sizeof(run_queue));
-			runQueueHead->threadControlBlock = newRunThread;
-			runQueueHead->next = NULL;
-		}
-		else
-		{
-			run_queue* crnt = runQueueHead;
-			
-			while (crnt->next != NULL)
+			if (crnt->threadControlBlock->t_id == currentThread->t_id)
 			{
+				crnt->threadControlBlock->status = 0;
+
+				#ifndef MLFQ
+					enqueueSTCF(crnt->threadControlBlock);
+				#else
+					sched_mlfq();
+				#endif
+
+				if (prev == NULL)
+				{
+					crnt = crnt->next;
+				}
+				else
+				{
+					prev->next = crnt->next;
+					crnt->next = crnt->next;
+				}
+			}
+			else
+			{
+				prev = crnt;
 				crnt = crnt->next;
 			}
-
-			crnt->next = newRunNode;
 		}
 
-		blocked_queue* oldBlockedNode = blockedQueueHead;
-		blockedQueueHead = blockedQueueHead->next;
-
-		free(oldBlockedNode);
+		mutex->locked = 0;
+		mutex->t_id = -1;
 	}
 
 	return 0;
@@ -310,6 +340,31 @@ static void sched_stcf()
 	// (feel free to modify arguments and return types)
 
 	// YOUR CODE HERE
+	while(1)
+	{
+		setitimer(ITIMER_PROF,&timerOff,NULL);
+		if(done)
+		{
+			//free everyhting since thread is done
+			done=0;
+			free((currentThread->context).uc_stack.ss_sp);
+			free(currentThread);
+			currentThread=NULL;
+		}
+		if(currentThread!=NULL)
+		{
+			//increase time quantum 
+			currentThread->status=0;
+			currentThread->time+=1;
+			enqueueSTCF(currentThread);
+		}
+
+		//allow next thread to go
+		currentThread = dequeueSTCF();
+		currentThread->status = 1;
+		setitimer(ITIMER_PROF,&timer,NULL);
+		swapcontext(&schedulerContext, &(currentThread->context));
+	}
 }
 
 /* Preemptive MLFQ scheduling algorithm */
@@ -327,4 +382,75 @@ static void sched_mlfq()
 void runner(void*(*function)(void*), void* arg)
 {
 	function(arg);
+}
+
+void signalHandler(int signum)
+{
+	swapcontext(&(currentThread->context),&schedulerContext);
+}
+
+void enqueueSTCF(tcb* threadBlock)
+{
+	run_queue* newRunNode = myMalloc(sizeof(run_queue));
+	newRunNode->threadControlBlock = threadBlock;
+	newRunNode->next = NULL;
+
+	if (runQueueHead == NULL)
+	{
+		runQueueHead = newRunNode;
+	}
+	else
+	{
+		run_queue* crnt = runQueueHead;
+		run_queue* prev = NULL;
+
+		while (crnt != NULL)
+		{
+			if (crnt->threadControlBlock->time > newRunNode->threadControlBlock->time)
+			{
+				if (prev == NULL)
+				{
+					newRunNode->next = runQueueHead;
+					runQueueHead = newRunNode;
+				}
+				else
+				{
+					prev->next = newRunNode;
+					newRunNode->next = crnt;
+				}
+
+				return;
+			}
+
+			prev = crnt;
+			crnt = crnt->next;
+		}
+	}
+}
+
+tcb* dequeueSTCF()
+{
+	if (runQueueHead == NULL)
+	{
+		return NULL;
+	}
+	else
+	{
+		tcb* newThread = runQueueHead->threadControlBlock;
+		runQueueHead = runQueueHead->next;
+		return newThread;
+	}
+}
+
+void* myMalloc(int size)
+{
+	void* temp = calloc(1, size);
+
+	if (temp == NULL)
+	{
+		printf("Fatal Error, malloc has returned null");
+		exit(1);
+	}
+
+	return temp;
 }
