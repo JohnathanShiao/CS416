@@ -25,6 +25,8 @@ int done = 0;
 
 int t_idcounter = 0;
 
+int firstTime = 1;
+
 /* create a new thread */
 int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg)
 {
@@ -35,7 +37,8 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	// after everything is all set, push this thread int
 	// YOUR CODE HERE
 
-	if (runQueueHead == NULL && blockedQueueHead == NULL && finishedQueueHead == NULL)
+	// if (runQueueHead == NULL && blockedQueueHead == NULL && finishedQueueHead == NULL)
+	if (firstTime)
 	{
 		mainThread = myMalloc(sizeof(tcb));
 		mainThread->t_id = t_idcounter++;
@@ -60,27 +63,12 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 		schedulerContext.uc_stack.ss_size = SIGSTKSZ;
 		schedulerContext.uc_stack.ss_flags = 0;
 		makecontext(&schedulerContext, (void*)&schedule, 0);
-
-		timer.it_interval.tv_usec = 0;
-		timer.it_interval.tv_sec = 0;
-		timer.it_value.tv_usec = 10;
-		timer.it_value.tv_sec = 0;
-
-		timerOff.it_interval.tv_usec = 0; 
-		timerOff.it_interval.tv_sec = 0;
-		timerOff.it_value.tv_usec = 0;
-		timerOff.it_value.tv_sec = 0;
-
-		struct sigaction signal;
-		memset(&signal,0,sizeof(signal));
-		signal.sa_handler = &signalHandler;
-		sigaction(SIGPROF, &signal, NULL);
-		currentThread = mainThread;
 	}
 
 	//TCB
 	tcb* newThread = myMalloc(sizeof(tcb));
 	newThread->t_id = t_idcounter++;
+	*thread = newThread->t_id;
 	newThread->status = 0;
 	newThread->time = 0;
 	//Thread Context
@@ -106,11 +94,32 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	#else
 		sched_mlfq();
 	#endif
-	setitimer(ITIMER_PROF,&timer,NULL);
 
-	*thread = newThread->t_id;
+	if (firstTime)
+	{
+		firstTime = 0;
 
-    return newThread->t_id;
+		struct sigaction signal;
+		memset(&signal,0,sizeof(signal));
+		signal.sa_handler = &signalHandler;
+		sigaction(SIGPROF, &signal, NULL);
+
+		timer.it_interval.tv_usec = 0;
+		timer.it_interval.tv_sec = 0;
+		timer.it_value.tv_usec = 10;
+		timer.it_value.tv_sec = 0;
+
+		timerOff.it_interval.tv_usec = 0; 
+		timerOff.it_interval.tv_sec = 0;
+		timerOff.it_value.tv_usec = 0;
+		timerOff.it_value.tv_sec = 0;
+
+		currentThread = mainThread;
+
+		setitimer(ITIMER_PROF,&timer,NULL);
+	}
+
+    return 0;
 };
 
 /* give CPU possession to other user-level threads voluntarily */
@@ -222,6 +231,7 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		blocked_queue* newBlockedNode = myMalloc(sizeof(blocked_queue));
 		newBlockedNode->threadControlBlock = currentThread;
 		newBlockedNode->threadControlBlock->status = 2;
+		newBlockedNode->t_id = mutex->t_id;
 		newBlockedNode->next = NULL;
 
 		currentThread = NULL;
@@ -246,10 +256,11 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		swapcontext(&(newBlockedNode->threadControlBlock->context), &schedulerContext);
 
 	}
+	
 	mutex->locked = 1;
 	mutex->t_id = currentThread->t_id;
-	printf("Thread id: %d\n", currentThread->t_id);
-	printf("Mutex id is %d\n", mutex->t_id);
+	// printf("Thread id: %d\n", currentThread->t_id);
+	// printf("Mutex id is %d\n", mutex->t_id);
 	
 	return 0;
 };
@@ -273,7 +284,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 
 		while (crnt != NULL)
 		{
-			if (crnt->threadControlBlock->t_id == currentThread->t_id)
+			if (crnt->t_id == currentThread->t_id)
 			{
 				crnt->threadControlBlock->status = 0;
 

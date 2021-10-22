@@ -66,6 +66,7 @@ typedef struct run_queue {
 } run_queue;
 
 typedef struct blocked_queue {
+	mypthread_t t_id;
 	tcb* threadControlBlock;
 	struct blocked_queue* next;
 } blocked_queue;
