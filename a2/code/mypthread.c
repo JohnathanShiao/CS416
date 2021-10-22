@@ -14,7 +14,6 @@ ucontext_t schedulerContext, mainContext;
 void runner(void*(*function)(void*), void* arg);
 
 run_queue* runQueueHead = NULL;
-blocked_queue* blockedQueueHead = NULL;
 finished_queue* finishedQueueHead = NULL;
 
 struct itimerval timer;
@@ -37,7 +36,6 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	// after everything is all set, push this thread int
 	// YOUR CODE HERE
 
-	// if (runQueueHead == NULL && blockedQueueHead == NULL && finishedQueueHead == NULL)
 	if (firstTime)
 	{
 		mainThread = myMalloc(sizeof(tcb));
@@ -211,6 +209,7 @@ int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mu
 	mutex = myMalloc(sizeof(mypthread_mutex_t));
 	mutex->locked = 0;
 	mutex->t_id = -1;
+	mutex->blockedQueueHead = NULL;
 
 	return 0;
 };
@@ -224,6 +223,7 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 	// context switch to the scheduler thread
 
 	// YOUR CODE HERE
+
 	if (mutex->locked == 1)
 	{
 		setitimer(ITIMER_PROF, &timerOff, NULL);
@@ -231,18 +231,17 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		blocked_queue* newBlockedNode = myMalloc(sizeof(blocked_queue));
 		newBlockedNode->threadControlBlock = currentThread;
 		newBlockedNode->threadControlBlock->status = 2;
-		newBlockedNode->t_id = mutex->t_id;
 		newBlockedNode->next = NULL;
 
 		currentThread = NULL;
 
-		if (blockedQueueHead == NULL)
+		if (mutex->blockedQueueHead == NULL)
 		{
-			blockedQueueHead = newBlockedNode;
+			mutex->blockedQueueHead = newBlockedNode;
 		}
 		else
 		{
-			blocked_queue* crnt = blockedQueueHead;
+			blocked_queue* crnt = mutex->blockedQueueHead;
 
 			while (crnt->next != NULL)
 			{
@@ -252,15 +251,11 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 			crnt->next = newBlockedNode;
 		}
 
-
 		swapcontext(&(newBlockedNode->threadControlBlock->context), &schedulerContext);
-
 	}
 	
 	mutex->locked = 1;
 	mutex->t_id = currentThread->t_id;
-	// printf("Thread id: %d\n", currentThread->t_id);
-	// printf("Mutex id is %d\n", mutex->t_id);
 	
 	return 0;
 };
@@ -273,46 +268,28 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 	// so that they could compete for mutex later.
 
 	// YOUR CODE HERE
-	
 	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id)
 	{
 		mutex->locked = 0;
 		mutex->t_id = -1;
 
-		blocked_queue* crnt = blockedQueueHead;
-		blocked_queue* prev = NULL;
+		blocked_queue* crnt = mutex->blockedQueueHead;
 
+		//take all blocked threads on this mutex and enqueue into runQueue
 		while (crnt != NULL)
 		{
-			if (crnt->t_id == currentThread->t_id)
-			{
-				crnt->threadControlBlock->status = 0;
+			#ifndef MLFQ
+				enqueueSTCF(crnt->threadControlBlock);
+			#else
+				sched_mlfq();
+			#endif
 
-				#ifndef MLFQ
-					enqueueSTCF(crnt->threadControlBlock);
-				#else
-					sched_mlfq();
-				#endif
-
-				if (prev == NULL)
-				{
-					crnt = crnt->next;
-				}
-				else
-				{
-					prev->next = crnt->next;
-					crnt = crnt->next;
-				}
-			}
-			else
-			{
-				prev = crnt;
-				crnt = crnt->next;
-			}
+			crnt = crnt->next;
 		}
-		return 0;
-	}	
 
+		mutex->blockedQueueHead = NULL;
+	}
+		
 	return -1;
 };
 
@@ -321,7 +298,6 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 int mypthread_mutex_destroy(mypthread_mutex_t *mutex)
 {
 	// Deallocate dynamic memory created in mypthread_mutex_init
-	// free(mutex);
 
 	return 0;
 };

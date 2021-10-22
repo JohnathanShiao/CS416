@@ -45,12 +45,19 @@ typedef struct threadControlBlock {
 	int time;
 } tcb;
 
+typedef struct blocked_queue {
+	// mypthread_t t_id;
+	tcb* threadControlBlock;
+	struct blocked_queue* next;
+} blocked_queue;
+
 /* mutex struct definition */
 typedef struct mypthread_mutex_t {
 	/* add something here */
 
 	int locked;
 	mypthread_t t_id;
+	blocked_queue* blockedQueueHead;
 
 	// YOUR CODE HERE
 } mypthread_mutex_t;
@@ -64,12 +71,6 @@ typedef struct run_queue {
 	tcb* threadControlBlock;
 	struct run_queue* next;
 } run_queue;
-
-typedef struct blocked_queue {
-	mypthread_t t_id;
-	tcb* threadControlBlock;
-	struct blocked_queue* next;
-} blocked_queue;
 
 typedef struct finished_queue {
 	mypthread_t t_id;
