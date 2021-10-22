@@ -107,6 +107,9 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 		sched_mlfq();
 	#endif
 	setitimer(ITIMER_PROF,&timer,NULL);
+
+	*thread = newThread->t_id;
+
     return newThread->t_id;
 };
 
@@ -220,7 +223,8 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 		newBlockedNode->threadControlBlock = currentThread;
 		newBlockedNode->threadControlBlock->status = 2;
 		newBlockedNode->next = NULL;
-		swapcontext(&(newBlockedNode->threadControlBlock->context), &schedulerContext);
+
+		currentThread = NULL;
 
 		if (blockedQueueHead == NULL)
 		{
@@ -238,11 +242,14 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 			crnt->next = newBlockedNode;
 		}
 
-		currentThread = NULL;
-	}
 
+		swapcontext(&(newBlockedNode->threadControlBlock->context), &schedulerContext);
+
+	}
 	mutex->locked = 1;
 	mutex->t_id = currentThread->t_id;
+	printf("Thread id: %d\n", currentThread->t_id);
+	printf("Mutex id is %d\n", mutex->t_id);
 	
 	return 0;
 };
@@ -258,6 +265,9 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 	
 	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id)
 	{
+		mutex->locked = 0;
+		mutex->t_id = -1;
+
 		blocked_queue* crnt = blockedQueueHead;
 		blocked_queue* prev = NULL;
 
@@ -280,7 +290,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 				else
 				{
 					prev->next = crnt->next;
-					crnt->next = crnt->next;
+					crnt = crnt->next;
 				}
 			}
 			else
@@ -289,12 +299,10 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 				crnt = crnt->next;
 			}
 		}
+		return 0;
+	}	
 
-		mutex->locked = 0;
-		mutex->t_id = -1;
-	}
-
-	return 0;
+	return -1;
 };
 
 
@@ -425,6 +433,8 @@ void enqueueSTCF(tcb* threadBlock)
 			prev = crnt;
 			crnt = crnt->next;
 		}
+
+		prev->next = newRunNode;
 	}
 }
 
