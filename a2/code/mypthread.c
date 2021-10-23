@@ -13,6 +13,9 @@ tcb* mainThread = NULL;
 ucontext_t schedulerContext, mainContext;
 void runner(void*(*function)(void*), void* arg);
 
+int MLFQtimer = 0;
+// run_queue** MLFQarray = initMLFQ();
+run_queue* MLFQarray[8];
 run_queue* runQueueHead = NULL;
 finished_queue* finishedQueueHead = NULL;
 
@@ -26,7 +29,7 @@ int t_idcounter = 0;
 
 int firstTime = 1;
 
-/* create a new thread */
+/* create a new thread */ 
 int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg)
 {
 	
@@ -51,7 +54,8 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 			enqueueSTCF(mainThread);
 			dequeueSTCF();
 		#else
-			schedmlfq();
+			enqueueMLFQ(mainThread);
+			dequeueMLFQ();
 		#endif
 
 		getcontext(&schedulerContext);
@@ -90,7 +94,7 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 	#ifndef MLFQ
 		enqueueSTCF(newThread);
 	#else
-		sched_mlfq();
+		enqueueMLFQ(newThread);
 	#endif
 
 	if (firstTime)
@@ -104,7 +108,7 @@ int mypthread_create(mypthread_t* thread, pthread_attr_t* attr, void *(*function
 
 		timer.it_interval.tv_usec = 0;
 		timer.it_interval.tv_sec = 0;
-		timer.it_value.tv_usec = 10;
+		timer.it_value.tv_usec = 5;
 		timer.it_value.tv_sec = 0;
 
 		timerOff.it_interval.tv_usec = 0; 
@@ -207,7 +211,7 @@ int mypthread_mutex_init(mypthread_mutex_t *mutex, const pthread_mutexattr_t *mu
 
 	// YOUR CODE HERE
 	mutex = myMalloc(sizeof(mypthread_mutex_t));
-	mutex->locked = 0;
+	__atomic_clear(&mutex->locked,__ATOMIC_RELAXED);
 	mutex->t_id = -1;
 	mutex->blockedQueueHead = NULL;
 
@@ -224,7 +228,7 @@ int mypthread_mutex_lock(mypthread_mutex_t *mutex)
 
 	// YOUR CODE HERE
 
-	if (mutex->locked == 1)
+	if (__atomic_test_and_set(&mutex->locked,__ATOMIC_RELAXED)==1)
 	{
 		setitimer(ITIMER_PROF, &timerOff, NULL);
 
@@ -270,7 +274,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 	// YOUR CODE HERE
 	if (mutex->locked == 1 && mutex->t_id == currentThread->t_id)
 	{
-		mutex->locked = 0;
+		__atomic_clear(&mutex->locked,__ATOMIC_RELAXED);
 		mutex->t_id = -1;
 
 		blocked_queue* crnt = mutex->blockedQueueHead;
@@ -281,7 +285,7 @@ int mypthread_mutex_unlock(mypthread_mutex_t *mutex)
 			#ifndef MLFQ
 				enqueueSTCF(crnt->threadControlBlock);
 			#else
-				sched_mlfq();
+				enqueueMLFQ(crnt->threadControlBlock);
 			#endif
 
 			crnt = crnt->next;
@@ -369,6 +373,42 @@ static void sched_mlfq()
 	// (feel free to modify arguments and return types)
 
 	// YOUR CODE HERE
+
+	while(1)
+	{
+		setitimer(ITIMER_PROF,&timerOff,NULL);
+		if(done)
+		{
+			//free everyhting since thread is done
+			done=0;
+			free((currentThread->context).uc_stack.ss_sp);
+			free(currentThread);
+			currentThread=NULL;
+		}
+		if(currentThread!=NULL)
+		{
+			//increase time quantum 
+			currentThread->status=0;
+			if(currentThread->time!=7)
+			{
+				currentThread->time+=1;
+			}
+			enqueueMLFQ(currentThread);
+		}
+
+		MLFQtimer++;
+		if (MLFQtimer == 100)
+		{
+			MLFQtimer = 0;
+			resetMLFQ();
+		}
+
+		//allow next thread to go
+		currentThread = dequeueMLFQ();
+		currentThread->status = 1;
+		setitimer(ITIMER_PROF,&timer,NULL);
+		swapcontext(&schedulerContext, &(currentThread->context));
+	}
 }
 
 // Feel free to add any other functions you need
@@ -436,6 +476,72 @@ tcb* dequeueSTCF()
 		tcb* newThread = runQueueHead->threadControlBlock;
 		runQueueHead = runQueueHead->next;
 		return newThread;
+	}
+}
+
+void enqueueMLFQ(tcb* threadBlock)
+{
+	run_queue* newRunNode = myMalloc(sizeof(run_queue));
+	newRunNode->threadControlBlock = threadBlock;
+	newRunNode->next = NULL;
+
+	int index = newRunNode->threadControlBlock->time;
+
+	if (MLFQarray[index] == NULL)
+	{
+		MLFQarray[index] = newRunNode;
+	}
+	else{
+		run_queue* curr = MLFQarray[index];
+		run_queue* prev = NULL;
+		while(curr!=NULL)
+		{
+			prev=curr;
+			curr=curr->next;
+		}
+		prev->next=newRunNode;
+	}
+}
+
+tcb* dequeueMLFQ()
+{
+	for(int i = 0;i<8;i++)
+	{
+		if(MLFQarray[i]!= NULL)
+		{
+			tcb* temp = MLFQarray[i]->threadControlBlock;
+			MLFQarray[i] = MLFQarray[i]->next;
+			return temp;
+		}
+	}
+	return NULL;
+}
+
+void resetMLFQ()
+{
+	for (int i = 1; i < 8; i++)
+	{
+		run_queue* crnt = MLFQarray[i];
+
+		if (crnt != NULL)
+		{
+			if (MLFQarray[0] == NULL)
+			{
+				MLFQarray[0] = MLFQarray[i];
+			}
+			else
+			{
+				while (crnt->next != NULL)
+				{
+					crnt = crnt->next;
+				}
+
+				crnt->next = MLFQarray[0];
+				MLFQarray[0] = MLFQarray[i];
+			}
+
+			MLFQarray[i] = NULL;
+		}
 	}
 }
 

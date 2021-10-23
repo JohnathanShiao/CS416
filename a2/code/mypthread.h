@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <string.h>
+#include <stdatomic.h>
 
 typedef uint mypthread_t;
 
@@ -110,6 +111,8 @@ void* myMalloc(int size);
 
 static void sched_stcf();
 
+static void sched_mlfq();
+
 void signalHandler(int signum);
 
 void enqueueSTCF(tcb* threadBlock);
@@ -117,6 +120,12 @@ void enqueueSTCF(tcb* threadBlock);
 tcb* dequeueSTCF();
 
 static void schedule();
+
+void resetMLFQ();
+
+void enqueueMLFQ(tcb* threadBlock);
+
+tcb* dequeueMLFQ();
 
 #ifdef USE_MYTHREAD
 #define pthread_t mypthread_t
