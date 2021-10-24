@@ -1,6 +1,6 @@
 // File:	mypthread_t.h
 
-// List all group member's name: Dustin Shiao, Henry Chu
+// List all group member's name: Dustin Shiao (ds1576), Henry Chu (hc798)
 // username of iLab: pascal
 // iLab Server:
 

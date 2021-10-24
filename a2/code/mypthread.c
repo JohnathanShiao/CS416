@@ -1,6 +1,6 @@
 // File:	mypthread.c
 
-// List all group member's name: Dustin Shiao, Henry Chu
+// List all group member's name: Dustin Shiao (ds1576), Henry Chu (hc798)
 // username of iLab: pascal
 // iLab Server: 
 
@@ -14,7 +14,6 @@ ucontext_t schedulerContext, mainContext;
 void runner(void*(*function)(void*), void* arg);
 
 int MLFQtimer = 0;
-// run_queue** MLFQarray = initMLFQ();
 run_queue* MLFQarray[8];
 run_queue* runQueueHead = NULL;
 finished_queue* finishedQueueHead = NULL;
