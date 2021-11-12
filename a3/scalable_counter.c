@@ -4,8 +4,8 @@
 #include <sys/time.h>
 
 #define COUNTER_VALUE (1UL << 24)
-#define NUMCPUS 4
-#define THRESHOLD 50
+#define NUMCPUS 1000
+#define THRESHOLD 1000
 
 typedef struct __counter_t {
 	long global; // global count
@@ -14,7 +14,9 @@ typedef struct __counter_t {
 	pthread_mutex_t llock[NUMCPUS]; // ... and locks
 } counter_t;
 
-void init(counter_t *c) {
+counter_t *c;
+
+void init() {
 	c->global = 0;
 
 	if (pthread_mutex_init(&c->glock, NULL) != 0)
@@ -34,7 +36,7 @@ void init(counter_t *c) {
 	}
 }
 
-void update(counter_t *c) {
+void update() {
 	pthread_t t_id = pthread_self();
 	int cpu = t_id % NUMCPUS;
 	pthread_mutex_lock(&c->llock[cpu]);
@@ -46,7 +48,7 @@ void update(counter_t *c) {
 		// transfer to global (assumes amt>0)
 		pthread_mutex_lock(&c->glock);
 		c->global += c->local[cpu];
-		printf("%ld\n",c->global);
+		// printf("%ld\n",c->global);
 		pthread_mutex_unlock(&c->glock);
 		c->local[cpu] = 0;
 	}
@@ -54,20 +56,20 @@ void update(counter_t *c) {
 	pthread_mutex_unlock(&c->llock[cpu]);
 }
 
-long get(counter_t *c) {
+long get() {
 	pthread_mutex_lock(&c->glock);
 	long val = c->global;
 	pthread_mutex_unlock(&c->glock);
 	return val; // only approximate!
 }
 
-void* count(void *p)
+void* count()
 {
-	counter_t *c = p;
+	// counter_t *c = p;
 
     for (int i = 0; i < COUNTER_VALUE; ++i)
     {
-        update(c);
+        update();
     }
 }
 
@@ -81,8 +83,8 @@ int main(int argc, char** argv)
 
     int numThreads = atoi(argv[1]);
 
-	counter_t *c = malloc(sizeof(counter_t));
-	init(c);
+	c = malloc(sizeof(counter_t));
+	init();
     pthread_t pthreadArray[numThreads];
 
 	struct timeval start, end, result;
@@ -91,7 +93,7 @@ int main(int argc, char** argv)
 	for (int i = 0; i < numThreads; ++i)
     {
         pthread_t t_id;
-        pthread_create(&t_id, NULL, &count, &c);
+        pthread_create(&t_id, NULL, &count, NULL);
         pthreadArray[i] = t_id;
     }
 
@@ -103,7 +105,7 @@ int main(int argc, char** argv)
     gettimeofday(&end, NULL);
     timersub(&end, &start, &result);
 
-	long counter = get(c);
+	long counter = get();
 
     double total_time = (result.tv_sec * 1000000) + result.tv_usec;
 
