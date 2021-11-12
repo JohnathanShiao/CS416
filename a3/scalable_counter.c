@@ -4,8 +4,8 @@
 #include <sys/time.h>
 
 #define COUNTER_VALUE (1UL << 24)
-#define NUMCPUS 2
-#define THRESHOLD 5
+#define NUMCPUS 4
+#define THRESHOLD 50
 
 typedef struct __counter_t {
 	long global; // global count
@@ -35,7 +35,7 @@ void init(counter_t *c) {
 }
 
 void update(counter_t *c) {
-	int t_id = pthread_self;
+	pthread_t t_id = pthread_self();
 	int cpu = t_id % NUMCPUS;
 	pthread_mutex_lock(&c->llock[cpu]);
 
@@ -46,6 +46,7 @@ void update(counter_t *c) {
 		// transfer to global (assumes amt>0)
 		pthread_mutex_lock(&c->glock);
 		c->global += c->local[cpu];
+		printf("%ld\n",c->global);
 		pthread_mutex_unlock(&c->glock);
 		c->local[cpu] = 0;
 	}

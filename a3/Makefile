@@ -1,4 +1,4 @@
-CC=gcc
+CC=gcc -g 
 LIBS=-lpthread
 
 all: naive_counter naive_counter_plus atomic_counter scalable_counter
