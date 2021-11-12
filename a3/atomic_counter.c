@@ -5,7 +5,6 @@
 
 #define COUNTER_VALUE (1UL << 24)
 long counter = 0;
-pthread_mutex_t lock;
 
 void* count()
 {

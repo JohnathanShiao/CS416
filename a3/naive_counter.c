@@ -23,10 +23,10 @@ int main(int argc, char** argv)
     }
 
     int numThreads = atoi(argv[1]);
+    pthread_t pthreadArray[numThreads];
 
     struct timeval start, end, result;
     gettimeofday(&start, NULL);
-    pthread_t pthreadArray[numThreads];
 
     for (int i = 0; i < numThreads; ++i)
     {
