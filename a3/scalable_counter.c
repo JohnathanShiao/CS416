@@ -5,7 +5,7 @@
 
 #define COUNTER_VALUE (1UL << 24)
 #define NUMCPUS 1000
-#define THRESHOLD 1000
+#define THRESHOLD 100
 
 typedef struct __counter_t {
 	long global; // global count
@@ -112,6 +112,13 @@ int main(int argc, char** argv)
     printf("Counter finish in %f microseconds\n", total_time);
     printf("The value of counter should be %ld\n", COUNTER_VALUE * numThreads);
     printf("The value of counter is %ld\n", counter);
+
+	FILE *file = NULL;
+    file = fopen("scalable_counter_data.txt", "a");
+    fprintf(file, "%f\n", total_time);
+    fclose(file);
+
+	free(c);
 
 	return 0;
 }

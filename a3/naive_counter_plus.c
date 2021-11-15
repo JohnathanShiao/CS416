@@ -61,5 +61,10 @@ int main(int argc, char** argv)
     printf("The value of counter should be %ld\n", COUNTER_VALUE * numThreads);
     printf("The value of counter is %ld\n", counter);
 
+    FILE *file = NULL;
+    file = fopen("naive_counter_plus_data.txt", "a");
+    fprintf(file, "%f\n", total_time);
+    fclose(file);
+
 	return 0;
 }
