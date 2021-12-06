@@ -14,7 +14,7 @@
 #define N_FILES 100
 #define BLOCKSIZE 4096
 #define FSPATHLEN 256
-#define ITERS 100
+#define ITERS 16
 #define FILEPERM 0666
 #define DIRPERM 0755
 
