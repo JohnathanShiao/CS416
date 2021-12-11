@@ -543,7 +543,7 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 	{
 		if(temp_inode.direct_ptr[i] == -1)
 			break;
-		if(bio_read(temp_inode.direct_ptr[i],read_buf),0)
+		if(bio_read(temp_inode.direct_ptr[i],read_buf)<0)
 			return amount;
 		if(BLOCK_SIZE-offset >=size)
 		{
@@ -559,6 +559,41 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 			offset = 0;
 			size -= (BLOCK_SIZE - offset);
 		}
+	}
+	//read from indirect pointers
+	int* indirect_page;
+	int start_indirect = (start-16) / (BLOCK_SIZE/4);
+	int direct_ptr_start = (start-16)%(BLOCK_SIZE);
+	for(int j = start_indirect;j<8 && size!=0;j++)
+	{
+		indirect_page = calloc(1,BLOCK_SIZE);
+		if(temp_inode.indirect_ptr[j] == -1)
+			break;
+		if(bio_read(temp_inode.indirect_ptr[j],indirect_page)<0)
+			return amount;
+		//iterate through indirect page
+		for(int k = direct_ptr_start;k<BLOCK_SIZE/sizeof(int) && size!=0;k++)
+		{
+			if(indirect_page[k] == 0)
+				break;
+			if(bio_read(indirect_page[k],read_buf)<0)
+				return amount;
+			if(BLOCK_SIZE-offset >=size)
+			{
+				memcpy(copy_buf + amount,read_buf+offset,size);
+				offset = 0;
+				amount+=size;
+				size-=size;
+			}
+			else
+			{
+				memcpy(copy_buf+amount, read_buf+offset,BLOCK_SIZE-offset);
+				amount+=(BLOCK_SIZE - offset);
+				offset = 0;
+				size -= (BLOCK_SIZE - offset);
+			}
+		}
+		free(indirect_page);
 	}
 	memcpy(buffer,copy_buf,amount);
 	free(copy_buf);
@@ -607,11 +642,10 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 	}
 	//start using indirect pointers
 	int* indirect_page;
-	char* direct_buf;
-	for(int j = 0;j<8 && size !=0;j++)
+	int start_indirect = (start-16) / (BLOCK_SIZE/4);
+	for(int j = start_indirect;j<8 && size !=0;j++)
 	{
 		indirect_page = calloc(1,BLOCK_SIZE);
-		direct_buf = calloc(1,BLOCK_SIZE);
 		//initialize the block for pointers
 		if(temp_inode.indirect_ptr[j] == -1)
 		{
@@ -629,35 +663,35 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			if(indirect_page[k] == 0)
 			{
 				//get a new block
-				int direct_block = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
+				// int direct_block = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
+				int direct_block = get_avail_blkno();
 				//check if the direct block is valid
-				if(bio_read(indirect_page[k],direct_buf)<0)
+				if(bio_read(indirect_page[k],read_buf)<0)
 					return amount;
 				indirect_page[k] = direct_block;
 				bio_write(temp_inode.indirect_ptr[j],indirect_page);
-			}
-			//write to the direct block
-			if(BLOCK_SIZE - offset >= size)
-			{
-				memcpy(read_buf + offset, buffer + amount, size);
-				if(bio_write(indirect_page[k], read_buf) < 0 ) 
-					return amount;
-				amount += size;
-				size -= size;
-				offset = 0;
-			}
-			else
-			{
-				memcpy(read_buf + offset, buffer + amount, BLOCK_SIZE - offset);
-				if(bio_write(indirect_page[k], read_buf) < 0) 
-					return amount;
-				amount += (BLOCK_SIZE - offset);
-				size -= (BLOCK_SIZE - offset);
-				offset = 0;
+				//write to the direct block
+				if(BLOCK_SIZE - offset >= size)
+				{
+					memcpy(read_buf + offset, buffer + amount, size);
+					if(bio_write(indirect_page[k], read_buf) < 0 ) 
+						return amount;
+					amount += size;
+					size -= size;
+					offset = 0;
+				}
+				else
+				{
+					memcpy(read_buf + offset, buffer + amount, BLOCK_SIZE - offset);
+					if(bio_write(indirect_page[k], read_buf) < 0) 
+						return amount;
+					amount += (BLOCK_SIZE - offset);
+					size -= (BLOCK_SIZE - offset);
+					offset = 0;
+				}
 			}
 		}
 		free(indirect_page);
-		free(direct_buf);
 	}
 	// Step 4: Update the inode info and write it to disk
 	temp_inode.size += amount;
