@@ -574,6 +574,7 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 		//iterate through indirect page
 		for(int k = direct_ptr_start;k<BLOCK_SIZE/sizeof(int) && size!=0;k++)
 		{
+			printf("%d\n",k);
 			if(indirect_page[k] == 0)
 				break;
 			if(bio_read(indirect_page[k],read_buf)<0)
@@ -617,7 +618,7 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 		{
 			if(size == 0) 
 				break;
-			temp_inode.direct_ptr[i] = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
+			temp_inode.direct_ptr[i] = get_avail_blkno();
 		}
 		if(bio_read(temp_inode.direct_ptr[i], read_buf) < 0) 
 			return amount;
@@ -651,7 +652,7 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 		{
 			if(size == 0) 
 				break;
-			temp_inode.indirect_ptr[j] = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
+			temp_inode.indirect_ptr[j] = get_avail_blkno();
 		}
 		//grab indirect page
 		if(bio_read(temp_inode.indirect_ptr[j], indirect_page) < 0) 
@@ -663,7 +664,6 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			if(indirect_page[k] == 0)
 			{
 				//get a new block
-				// int direct_block = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
 				int direct_block = get_avail_blkno();
 				//check if the direct block is valid
 				if(bio_read(indirect_page[k],read_buf)<0)
@@ -730,8 +730,24 @@ static int tfs_unlink(const char *path) {
 	for(int i =0;i<sizeof(temp_inode.direct_ptr)/sizeof(int);i++)
 	{
 		if(temp_inode.direct_ptr[i] != -1)
-			unset_bitmap(d_bitmap,(temp_inode.direct_ptr[i] - superblock->d_start_blk)/BLOCK_SIZE);
+			unset_bitmap(d_bitmap,temp_inode.direct_ptr[i]);
 	}
+	// int* indirect_page;
+	// for(int j = 0;j<8;j++)
+	// {
+	// 	if(temp_inode.indirect_ptr[j] != -1)
+	// 	{	
+	// 		if(readi(temp_inode.indirect_ptr[j],indirect_page))
+	// 			return -1;
+	// 		for(int k = 0;k<BLOCK_SIZE/sizeof(int);k++)
+	// 		{
+	// 			if(indirect_page[k] != 0)
+	// 			{
+	// 				unset_bitmap(d_bitmap,indirect_page[k]);
+	// 			}
+	// 		}
+	// 	}
+	// }
 	if(bio_write(superblock->d_bitmap_blk,d_bitmap)<0)
 		return -1; 
 	// Step 5: Call get_node_by_path() to get inode of parent directory
