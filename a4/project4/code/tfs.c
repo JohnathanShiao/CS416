@@ -125,7 +125,7 @@ int writei(uint16_t ino, struct inode *inode) {
 /* 
  * directory operations
  */
-int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *dirent, int* disk_blk_num) {
+int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *dirent) {
 	struct dirent curr_dirent[NUM_DIRENTS];
 	memset(curr_dirent,0, BLOCK_SIZE);
 	struct inode curr_inode;
@@ -160,8 +160,7 @@ int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *di
 
 int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t name_len) {
 	struct dirent entry;
-	int disk_blk_num;
-	if(dir_find(dir_inode.ino,fname,name_len,&entry,&disk_blk_num) == 0)
+	if(dir_find(dir_inode.ino,fname,name_len,&entry) == 0)
 		return -1;
 
 	for(int i = 0; i < 16; i++)
@@ -202,14 +201,13 @@ int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t na
 int dir_remove(struct inode* dir_inode, const char *fname, size_t name_len) {
 	// Step 1: Read dir_inode's data block and checks each directory entry of dir_inode
 	struct dirent entry;
-	int disk_blk_num;
 	// Step 2: Check if fname exist
-	if(dir_find(dir_inode->ino,fname,name_len,&entry,&disk_blk_num) < 0)
+	if(dir_find(dir_inode->ino,fname,name_len,&entry) < 0)
 		return -1;
 	
 	// Step 3: If exist, then remove it from dir_inode's data block and write to disk
 	struct dirent* entries = calloc(1,BLOCK_SIZE);
-	bio_read(dir_inode->direct_ptr[disk_blk_num], entries);
+	bio_read(dir_inode->direct_ptr[0], entries);
 	for(int i = 0; i < NUM_DIRENTS; i++)
 	{
 		if(entries[i].valid == 1)
@@ -222,17 +220,17 @@ int dir_remove(struct inode* dir_inode, const char *fname, size_t name_len) {
 				{
 					if(entries[j].valid == 1)
 					{
-						bio_write(dir_inode->direct_ptr[disk_blk_num], entries);
+						bio_write(dir_inode->direct_ptr[0], entries);
 						return 0;
 					}
 				}
 				char d_bitmap[BLOCK_SIZE];
-				int blk_num = (dir_inode->direct_ptr[disk_blk_num]- superblock->d_start_blk)/BLOCK_SIZE;
+				int blk_num = (dir_inode->direct_ptr[0]- superblock->d_start_blk)/BLOCK_SIZE;
 				bio_read(superblock->d_bitmap_blk, (bitmap_t)d_bitmap);
 				unset_bitmap((bitmap_t)d_bitmap, blk_num);
 				bio_write(superblock->d_bitmap_blk, (bitmap_t)d_bitmap);
 
-				dir_inode->direct_ptr[disk_blk_num] = -1;
+				dir_inode->direct_ptr[0] = -1;
 				writei(dir_inode->ino,dir_inode);
 				return 0;
 			}
@@ -251,7 +249,6 @@ int get_node_by_path(const char *path, uint16_t ino, struct inode *inode) {
 	struct dirent curr_dir;
 	int path_size = strlen(path)+1;
 	char* temp_path = calloc(1,path_size);
-	int disk_blk_num;
 
     memcpy(temp_path, path, path_size);
 
@@ -263,7 +260,7 @@ int get_node_by_path(const char *path, uint16_t ino, struct inode *inode) {
 	}
 	
 	char* fname = strtok(temp_path,"/");
-	if(dir_find(ino,fname,strlen(fname),&curr_dir,&disk_blk_num) < 0)
+	if(dir_find(ino,fname,strlen(fname),&curr_dir) < 0)
 		return -1;
 	else 
 	{
@@ -276,7 +273,7 @@ int get_node_by_path(const char *path, uint16_t ino, struct inode *inode) {
 		fname = strtok(NULL,"/");
 		if(fname == NULL)
 			return 0;
-		if(dir_find(inode->ino,fname,strlen(fname),&curr_dir,&disk_blk_num) < 0)
+		if(dir_find(inode->ino,fname,strlen(fname),&curr_dir) < 0)
 			return -1;
 		else 
 		{
@@ -441,6 +438,7 @@ static int tfs_mkdir(const char *path, mode_t mode) {
 	temp->type = __S_IFDIR;
 	temp->size=0;
 	memset(temp->direct_ptr,-1,sizeof(temp->direct_ptr));
+	memset(temp->indirect_ptr,-1,sizeof(temp->indirect_ptr));
 	// Step 6: Call writei() to write inode to disk
 	if(writei(ino, temp) != 0) 
 		return -1;
@@ -458,8 +456,7 @@ static int tfs_rmdir(const char *path) {
 	if(get_node_by_path(dirName, 2, &parent_inode) != 0) 
 		return -1;
 	struct dirent temp_dirent;
-	int disk_blk_num;
-	if(dir_find(parent_inode.ino, baseName, strlen(baseName), &temp_dirent, &disk_blk_num) != 0) 
+	if(dir_find(parent_inode.ino, baseName, strlen(baseName), &temp_dirent) != 0) 
 		return -1;
 	
 	//check for empty dir
@@ -512,6 +509,7 @@ static int tfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) 
 	temp->type = __S_IFREG;
 	temp->size=0;
 	memset(temp->direct_ptr,-1,sizeof(temp->direct_ptr));
+	memset(temp->indirect_ptr,-1,sizeof(temp->indirect_ptr));
 	// Step 6: Call writei() to write inode to disk
 	if(writei(temp_ino, temp) != 0) 
 		return -1;
@@ -607,6 +605,60 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			offset = 0;
 		}
 	}
+	//start using indirect pointers
+	int* indirect_page;
+	char* direct_buf;
+	for(int j = 0;j<8 && size !=0;j++)
+	{
+		indirect_page = calloc(1,BLOCK_SIZE);
+		direct_buf = calloc(1,BLOCK_SIZE);
+		//initialize the block for pointers
+		if(temp_inode.indirect_ptr[j] == -1)
+		{
+			if(size == 0) 
+				break;
+			temp_inode.indirect_ptr[j] = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
+		}
+		//grab indirect page
+		if(bio_read(temp_inode.indirect_ptr[j], indirect_page) < 0) 
+			return amount;
+		//iterate through the indirect page
+		for(int k = 0;k<BLOCK_SIZE/sizeof(int) && size !=0;k++)
+		{
+			//found empty direct pointer spot
+			if(indirect_page[k] == 0)
+			{
+				//get a new block
+				int direct_block = get_avail_blkno()*BLOCK_SIZE + superblock->d_start_blk;
+				//check if the direct block is valid
+				if(bio_read(indirect_page[k],direct_buf)<0)
+					return amount;
+				indirect_page[k] = direct_block;
+				bio_write(temp_inode.indirect_ptr[j],indirect_page);
+			}
+			//write to the direct block
+			if(BLOCK_SIZE - offset >= size)
+			{
+				memcpy(read_buf + offset, buffer + amount, size);
+				if(bio_write(indirect_page[k], read_buf) < 0 ) 
+					return amount;
+				amount += size;
+				size -= size;
+				offset = 0;
+			}
+			else
+			{
+				memcpy(read_buf + offset, buffer + amount, BLOCK_SIZE - offset);
+				if(bio_write(indirect_page[k], read_buf) < 0) 
+					return amount;
+				amount += (BLOCK_SIZE - offset);
+				size -= (BLOCK_SIZE - offset);
+				offset = 0;
+			}
+		}
+		free(indirect_page);
+		free(direct_buf);
+	}
 	// Step 4: Update the inode info and write it to disk
 	temp_inode.size += amount;
 	if(writei(temp_inode.ino, &temp_inode) < 0) 
@@ -626,8 +678,7 @@ static int tfs_unlink(const char *path) {
 	if(get_node_by_path(dirName,2,&parent_node)!=0)
 		return -1;
 	struct dirent temp_dir;
-	int disk_blk_num;
-	if(dir_find(parent_node.ino,baseName,strlen(baseName),&temp_dir,&disk_blk_num)!=0)
+	if(dir_find(parent_node.ino,baseName,strlen(baseName),&temp_dir)!=0)
 		return -1;	
 	// Step 3: Clear data block bitmap of target file
 	unsigned char d_bitmap[BLOCK_SIZE];
