@@ -166,14 +166,14 @@ int main(int argc, char **argv) {
 		memset(buf, 0x61 + i % 26, BLOCKSIZE);
 
 		if (write(fd, buf, BLOCKSIZE) != BLOCKSIZE) {
-			printf("TEST 9: Large file write failure \n");
+			printf("TEST 9: Large file first write failure \n");
 			exit(1);
 		}
 	}
 	
 	fstat(fd, &st);
 	if (st.st_size != ITERS_LARGE*BLOCKSIZE) {
-		printf("TEST 9: Large file write failure \n");
+		printf("TEST 9: Large file second write failure \n");
 		exit(1);
 	}
 	printf("TEST 9: Large file write success \n");
@@ -195,14 +195,15 @@ int main(int argc, char **argv) {
 	/* TEST 10: Large file read test */
 	if (pread(fd, buf, BLOCKSIZE, 1000*BLOCKSIZE) != BLOCKSIZE) {
 		perror("pread");
-		printf("TEST 10: Large file read failure \n");
+		printf("TEST 10: Large file first read failure \n");
 		exit(1);
 	}
     
 	/* Verify file content */
 	if (buf[0] != 0x61 + 1000 % 26) {
 		perror("pread");
-		printf("TEST 10: Large file read failure \n");
+		printf("TEST 10: Large file second read failure \n");
+		printf("REAL: %d\n\nEXPECTED: %d\n\n",buf[0],0x61+1000%26);
 		exit(1);
 	}
 

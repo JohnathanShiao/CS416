@@ -562,8 +562,15 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 	}
 	//read from indirect pointers
 	int* indirect_page;
+	int off;
+	if(start > 16)
+		off = 16;
+	else
+	{
+		off = 12;
+	}
 	int start_indirect = (start-16) / (BLOCK_SIZE/4);
-	int direct_ptr_start = (start-12) % (BLOCK_SIZE);
+	int direct_ptr_start = (start-off) % (BLOCK_SIZE);
 	for(int j = start_indirect;j<8 && size!=0;j++)
 	{
 		indirect_page = calloc(1,BLOCK_SIZE);
