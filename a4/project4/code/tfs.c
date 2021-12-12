@@ -667,6 +667,10 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			if(size == 0) 
 				break;
 			temp_inode.indirect_ptr[j] = get_avail_blkno();
+			//clear out blocks that were potentially used before
+			bio_read(temp_inode.indirect_ptr[j],indirect_page);
+			memset(indirect_page,0,BLOCK_SIZE);
+			bio_write(temp_inode.indirect_ptr[j],indirect_page);
 		}
 		//grab indirect page
 		if(bio_read(temp_inode.indirect_ptr[j], indirect_page) < 0) 
@@ -679,6 +683,10 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			{
 				//get a new block
 				int direct_block = get_avail_blkno();
+				//clear out this new block in case it has been used before
+				bio_read(direct_block,read_buf);
+				memset(read_buf,0,BLOCK_SIZE);
+				bio_write(direct_block,read_buf);
 				//check if the direct block is valid
 				if(bio_read(indirect_page[k],read_buf)<0)
 					return amount;
