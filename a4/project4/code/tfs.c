@@ -566,9 +566,7 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 	if(start > 16)
 		off = 16;
 	else
-	{
 		off = 12;
-	}
 	int start_indirect = (start-16) / (BLOCK_SIZE/4);
 	int direct_ptr_start = (start-off) % (BLOCK_SIZE);
 	for(int j = start_indirect;j<8 && size!=0;j++)
@@ -619,7 +617,8 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 static int tfs_write(const char *path, const char *buffer, size_t size, off_t offset, struct fuse_file_info *fi) {
 	// Step 1: You could call get_node_by_path() to get inode from path
 	struct inode temp_inode;
-	if(get_node_by_path(path, 2, &temp_inode) != 0) return -1;
+	if(get_node_by_path(path, 2, &temp_inode) != 0) 
+		return -1;
 	// Step 2: Based on size and offset, read its data blocks from disk
 	char* read_buf = calloc(1,BLOCK_SIZE);
 	int start = offset/BLOCK_SIZE;
@@ -667,10 +666,6 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			if(size == 0) 
 				break;
 			temp_inode.indirect_ptr[j] = get_avail_blkno();
-			//clear out blocks that were potentially used before
-			bio_read(temp_inode.indirect_ptr[j],indirect_page);
-			memset(indirect_page,0,BLOCK_SIZE);
-			bio_write(temp_inode.indirect_ptr[j],indirect_page);
 		}
 		//grab indirect page
 		if(bio_read(temp_inode.indirect_ptr[j], indirect_page) < 0) 
@@ -683,10 +678,6 @@ static int tfs_write(const char *path, const char *buffer, size_t size, off_t of
 			{
 				//get a new block
 				int direct_block = get_avail_blkno();
-				//clear out this new block in case it has been used before
-				bio_read(direct_block,read_buf);
-				memset(read_buf,0,BLOCK_SIZE);
-				bio_write(direct_block,read_buf);
 				//check if the direct block is valid
 				if(bio_read(indirect_page[k],read_buf)<0)
 					return amount;
@@ -747,12 +738,18 @@ static int tfs_unlink(const char *path) {
 	bio_write(superblock->i_bitmap_blk, bitmap);
 
 	struct inode temp_inode;
+	char* temp_buf = calloc(1,BLOCK_SIZE);
 	if(readi(temp_dir.ino,&temp_inode)<0)
 		return -1;
 	for(int i =0;i<sizeof(temp_inode.direct_ptr)/sizeof(int);i++)
 	{
 		if(temp_inode.direct_ptr[i] != -1)
+		{
+			bio_read(temp_inode.direct_ptr[i],temp_buf);
+			memset(temp_buf,0,BLOCK_SIZE);
+			bio_write(temp_inode.direct_ptr[i],temp_buf);
 			unset_bitmap(d_bitmap,temp_inode.direct_ptr[i]);
+		}
 	}
 	int* indirect_page;
 	for(int j = 0;j<8;j++)
@@ -765,8 +762,15 @@ static int tfs_unlink(const char *path) {
 			for(int k = 0;k<BLOCK_SIZE/sizeof(int);k++)
 			{
 				if(indirect_page[k] != 0)
+				{
+					bio_read(indirect_page[k],temp_buf);
+					memset(temp_buf,0,BLOCK_SIZE);
+					bio_write(indirect_page[k],temp_buf);
 					unset_bitmap(d_bitmap,indirect_page[k]);
+				}
 			}
+			memset(indirect_page,0,BLOCK_SIZE);
+			bio_write(temp_inode.indirect_ptr[j],indirect_page);
 		}
 		free(indirect_page);
 	}
