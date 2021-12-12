@@ -574,7 +574,6 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 		//iterate through indirect page
 		for(int k = direct_ptr_start;k<BLOCK_SIZE/sizeof(int) && size!=0;k++)
 		{
-			printf("%d:\t%d\t%d\n",k,indirect_page[k],size);
 			if(indirect_page[k]==0)
 			{
 				//sequential reads requires the correct bytes return
@@ -604,9 +603,7 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 		}
 		free(indirect_page);
 	}
-	printf("AMOUNT: %d\n\nSIZE: %d\n\n",amount,size);
 	memcpy(buffer,copy_buf,amount);
-	amount+=size;
 	free(copy_buf);
 	// Note: this function should return the amount of bytes you copied to buffer
 	return amount;
@@ -748,14 +745,12 @@ static int tfs_unlink(const char *path) {
 		indirect_page = calloc(1,BLOCK_SIZE);
 		if(temp_inode.indirect_ptr[j] != -1)
 		{	
-			if(bio_read(temp_inode.indirect_ptr[j],indirect_page))
+			if(bio_read(temp_inode.indirect_ptr[j],indirect_page)<0)
 				return -1;
 			for(int k = 0;k<BLOCK_SIZE/sizeof(int);k++)
 			{
 				if(indirect_page[k] != 0)
-				{
 					unset_bitmap(d_bitmap,indirect_page[k]);
-				}
 			}
 		}
 		free(indirect_page);

@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
 			printf("TEST 4: File first read failure block: %d\n",i);
 			exit(1);
 		}
-		printf("buf %s \n", buf);
+		// printf("buf %s \n", buf);
 	}
         
 	if (pread(fd, buf, BLOCKSIZE, 2*BLOCKSIZE) != BLOCKSIZE) {
