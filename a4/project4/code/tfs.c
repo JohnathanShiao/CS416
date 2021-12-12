@@ -563,7 +563,7 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 	//read from indirect pointers
 	int* indirect_page;
 	int start_indirect = (start-16) / (BLOCK_SIZE/4);
-	int direct_ptr_start = (start-16)%(BLOCK_SIZE);
+	int direct_ptr_start = (start-12) % (BLOCK_SIZE);
 	for(int j = start_indirect;j<8 && size!=0;j++)
 	{
 		indirect_page = calloc(1,BLOCK_SIZE);
@@ -574,29 +574,39 @@ static int tfs_read(const char *path, char *buffer, size_t size, off_t offset, s
 		//iterate through indirect page
 		for(int k = direct_ptr_start;k<BLOCK_SIZE/sizeof(int) && size!=0;k++)
 		{
-			printf("%d\n",k);
-			if(indirect_page[k] == 0)
+			printf("%d:\t%d\t%d\n",k,indirect_page[k],size);
+			if(indirect_page[k]==0)
+			{
+				//sequential reads requires the correct bytes return
+				amount += size;
+				size = 0;
 				break;
-			if(bio_read(indirect_page[k],read_buf)<0)
-				return amount;
-			if(BLOCK_SIZE-offset >=size)
-			{
-				memcpy(copy_buf + amount,read_buf+offset,size);
-				offset = 0;
-				amount+=size;
-				size-=size;
 			}
-			else
+			if(indirect_page[k] != 0)
 			{
-				memcpy(copy_buf+amount, read_buf+offset,BLOCK_SIZE-offset);
-				amount+=(BLOCK_SIZE - offset);
-				offset = 0;
-				size -= (BLOCK_SIZE - offset);
+				if(bio_read(indirect_page[k],read_buf)<0)
+					return amount;
+				if(BLOCK_SIZE-offset >=size)
+				{
+					memcpy(copy_buf + amount,read_buf+offset,size);
+					offset = 0;
+					amount+=size;
+					size-=size;
+				}
+				else
+				{
+					memcpy(copy_buf+amount, read_buf+offset,BLOCK_SIZE-offset);
+					amount+=(BLOCK_SIZE - offset);
+					offset = 0;
+					size -= (BLOCK_SIZE - offset);
+				}
 			}
 		}
 		free(indirect_page);
 	}
+	printf("AMOUNT: %d\n\nSIZE: %d\n\n",amount,size);
 	memcpy(buffer,copy_buf,amount);
+	amount+=size;
 	free(copy_buf);
 	// Note: this function should return the amount of bytes you copied to buffer
 	return amount;
@@ -732,22 +742,24 @@ static int tfs_unlink(const char *path) {
 		if(temp_inode.direct_ptr[i] != -1)
 			unset_bitmap(d_bitmap,temp_inode.direct_ptr[i]);
 	}
-	// int* indirect_page;
-	// for(int j = 0;j<8;j++)
-	// {
-	// 	if(temp_inode.indirect_ptr[j] != -1)
-	// 	{	
-	// 		if(readi(temp_inode.indirect_ptr[j],indirect_page))
-	// 			return -1;
-	// 		for(int k = 0;k<BLOCK_SIZE/sizeof(int);k++)
-	// 		{
-	// 			if(indirect_page[k] != 0)
-	// 			{
-	// 				unset_bitmap(d_bitmap,indirect_page[k]);
-	// 			}
-	// 		}
-	// 	}
-	// }
+	int* indirect_page;
+	for(int j = 0;j<8;j++)
+	{
+		indirect_page = calloc(1,BLOCK_SIZE);
+		if(temp_inode.indirect_ptr[j] != -1)
+		{	
+			if(bio_read(temp_inode.indirect_ptr[j],indirect_page))
+				return -1;
+			for(int k = 0;k<BLOCK_SIZE/sizeof(int);k++)
+			{
+				if(indirect_page[k] != 0)
+				{
+					unset_bitmap(d_bitmap,indirect_page[k]);
+				}
+			}
+		}
+		free(indirect_page);
+	}
 	if(bio_write(superblock->d_bitmap_blk,d_bitmap)<0)
 		return -1; 
 	// Step 5: Call get_node_by_path() to get inode of parent directory

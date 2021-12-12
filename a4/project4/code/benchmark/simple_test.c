@@ -14,7 +14,7 @@
 #define N_FILES 100
 #define BLOCKSIZE 4096
 #define FSPATHLEN 256
-#define ITERS 16
+#define ITERS 100
 #define FILEPERM 0666
 #define DIRPERM 0755
 
@@ -72,10 +72,10 @@ int main(int argc, char **argv) {
 		memset(buf, 0, BLOCKSIZE);
 
 		if (read(fd, buf, BLOCKSIZE) != BLOCKSIZE) {
-			printf("TEST 4: File first read failure \n");
+			printf("TEST 4: File first read failure block: %d\n",i);
 			exit(1);
 		}
-		//printf("buf %s \n", buf);
+		printf("buf %s \n", buf);
 	}
         
 	if (pread(fd, buf, BLOCKSIZE, 2*BLOCKSIZE) != BLOCKSIZE) {
