@@ -7,7 +7,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <dirent.h>
-
+#include <sys/time.h>
 /* You need to change this macro to your TFS mount point*/
 #define TESTDIR "/tmp/ds1576/mountdir"
 
@@ -24,7 +24,8 @@ int main(int argc, char **argv) {
 
 	int i, fd = 0, ret = 0;
 	struct stat st;
-
+	struct timeval start, end, result;
+	gettimeofday(&start,NULL);
 	if ((fd = creat(TESTDIR "/file", FILEPERM)) < 0) {
 		perror("creat");
 		printf("TEST 1: File create failure \n");
@@ -133,7 +134,13 @@ int main(int argc, char **argv) {
 		}
 	}
 	printf("TEST 7: Sub-directory create success \n");
-
+	//end timer
+	gettimeofday(&end,NULL);
+	//find difference
+	timersub(&end,&start,&result);
+	//convert seconds into microseconds if needed
+	double total_time = (result.tv_sec*1000000)+result.tv_usec;
+	printf("Total Elapsed Time: %f microseconds\n",total_time);
 	printf("Benchmark completed \n");
 	return 0;
 }

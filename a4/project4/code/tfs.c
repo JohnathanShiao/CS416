@@ -64,8 +64,8 @@ int get_avail_ino() {
 	set_bitmap(i_bitmap, i_num);
 	bio_write(superblock->i_bitmap_blk, i_bitmap);
 	
-	//i_calls++;
-	//printf("iBlocks: %d\n", i_calls);
+	// i_calls++;
+	// printf("iBlocks: %ld\n", i_calls);
 	return i_num;
 }
 
@@ -85,8 +85,8 @@ int get_avail_blkno() {
 	set_bitmap(d_bitmap, d_num);
 	bio_write(superblock->d_bitmap_blk, d_bitmap);
 	
-	///d_calls++;
-	//printf("dBlocks: %d\n", d_calls); 
+	// d_calls++;
+	// printf("dBlocks: %ld\n", d_calls); 
 	return d_num;
 }
 
@@ -839,7 +839,7 @@ int main(int argc, char *argv[]) {
 	strcat(diskfile_path, "/DISKFILE");
 
 	fuse_stat = fuse_main(argc, argv, &tfs_ope, NULL);
-
+	// printf("BLOCKS: %ld\n",i_calls+d_calls);
 	return fuse_stat;
 	//return 0;
 }

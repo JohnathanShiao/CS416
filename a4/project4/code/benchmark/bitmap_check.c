@@ -8,7 +8,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <dirent.h>
-
+#include <sys/time.h>
 /* You need to change this macro to your TFS mount point*/
 #define TESTDIR "/tmp/ds1576/mountdir"
 
@@ -51,7 +51,8 @@ int main(int argc, char **argv) {
 	int i, fd = 0, ret = 0;
 	int icount = 0, dcount = 0, icount_after = 0, dcount_after = 0;
 	struct stat st;
-
+	struct timeval start, end, result;
+	gettimeofday(&start,NULL);
 	bitmap = malloc(BLOCKSIZE);
 
 	diskfile = open("../DISKFILE", O_RDWR, S_IRUSR | S_IWUSR);
@@ -170,7 +171,13 @@ int main(int argc, char **argv) {
 	} else {
 		printf("data blocks reclaimed unsuccessfuly %d\n", dcount - dcount_after);
 	}
-
+	//end timer
+	gettimeofday(&end,NULL);
+	//find difference
+	timersub(&end,&start,&result);
+	//convert seconds into microseconds if needed
+	double total_time = (result.tv_sec*1000000)+result.tv_usec;
+	printf("Total Elapsed Time: %f microseconds\n",total_time);
 	printf("Benchmark completed \n");
 	return 0;
 }
